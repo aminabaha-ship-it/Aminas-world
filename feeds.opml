@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<opml version="2.0">
+  <head>
+    <title>The Commons Desk — Curated Feeds</title>
+  </head>
+  <body>
+    <outline text="The Commons Desk Feeds" title="The Commons Desk Feeds">
+      <outline type="rss" text="Brown History" title="Brown History"
+        xmlUrl="https://brownhistory.substack.com/feed"
+        htmlUrl="https://brownhistory.substack.com/" />
+      <outline type="rss" text="Pajhwok Afghan News" title="Pajhwok Afghan News"
+        xmlUrl="https://pajhwok.com/feed"
+        htmlUrl="https://pajhwok.com/" />
+      <outline type="rss" text="South Asian Therapists Blog" title="South Asian Therapists Blog"
+        xmlUrl="https://southasiantherapists.org/feed"
+        htmlUrl="https://southasiantherapists.org/blog" />
+      <outline type="rss" text="Al Jazeera" title="Al Jazeera"
+        xmlUrl="https://www.aljazeera.com/xml/rss/all.xml"
+        htmlUrl="https://www.aljazeera.com/middle-east/" />
+    </outline>
+  </body>
+</opml>
