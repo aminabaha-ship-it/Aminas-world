@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Live Feed — The Commons Desk</title>
-<link rel="stylesheet" href="../assets/style.css">
+<link rel="stylesheet" href="style.css">
 <style>
   .feed-tabs {
     max-width: 1100px;
@@ -108,7 +108,7 @@
 <header class="masthead">
   <div class="masthead-inner">
     <div class="brand">
-      <a href="../index.html" style="display:flex;align-items:baseline;gap:10px;">
+      <a href="index.html" style="display:flex;align-items:baseline;gap:10px;">
         <span class="brand-mark">VOL. I</span>
         <span class="brand-name">The Commons Desk</span>
       </a>
@@ -129,7 +129,7 @@
 <section class="hero">
   <span class="hero-eyebrow">Live</span>
   <h1>Live Feed</h1>
-  <p class="lede">The latest from three sources we follow closely — pulled in real time, in their own words.</p>
+  <p class="lede">The latest from the sources we follow closely — pulled in real time, in their own words.</p>
 </section>
 
 <div class="feed-tabs" id="feedTabs">
@@ -138,6 +138,7 @@
   <button class="feed-tab" data-feed="pajhwok">Pajhwok Afghan News</button>
   <button class="feed-tab" data-feed="sat">South Asian Therapists</button>
   <button class="feed-tab" data-feed="aljazeera">Al Jazeera</button>
+  <button class="feed-tab" data-feed="everygirl">The Everygirl</button>
 </div>
 
 <div class="feed-status" id="feedStatus"><span class="spinner"></span>Fetching latest items…</div>
@@ -177,12 +178,58 @@ const FEEDS = [
     url: 'https://www.aljazeera.com/xml/rss/all.xml',
     stampClass: '',
     stampLabel: 'News'
+  },
+  {
+    id: 'everygirl',
+    name: 'The Everygirl',
+    url: 'https://theeverygirl.com/feed/',
+    stampClass: 'analysis',
+    stampLabel: 'Lifestyle'
   }
 ];
 
-// Public CORS-friendly RSS-to-JSON proxy (no key required, generous free tier)
-function proxyUrl(feedUrl) {
-  return 'https://api.rss2json.com/v1/api.json?rss_url=' + encodeURIComponent(feedUrl);
+// Two CORS-friendly RSS-to-JSON proxies — try the first, fall back to the second if it fails
+function proxyUrls(feedUrl) {
+  const encoded = encodeURIComponent(feedUrl);
+  return [
+    'https://api.rss2json.com/v1/api.json?rss_url=' + encoded,
+    'https://api.allorigins.win/raw?url=' + encoded // fallback: raw XML, parsed manually below
+  ];
+}
+
+function fetchWithTimeout(url, ms) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  return fetch(url, { signal: controller.signal }).finally(() => clearTimeout(timer));
+}
+
+function parseRawRss(xmlText) {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(xmlText, 'text/xml');
+  const items = Array.from(doc.querySelectorAll('item')).map(el => ({
+    title: el.querySelector('title')?.textContent || '',
+    link: el.querySelector('link')?.textContent || '',
+    pubDate: el.querySelector('pubDate')?.textContent || '',
+    description: el.querySelector('description')?.textContent || ''
+  }));
+  return { items };
+}
+
+async function fetchFeed(feedUrl) {
+  const [primary, fallback] = proxyUrls(feedUrl);
+
+  // Try primary (rss2json) first
+  try {
+    const res = await fetchWithTimeout(primary, 9000);
+    const data = await res.json();
+    if (data && data.items && data.items.length) return data;
+    throw new Error('empty primary response');
+  } catch (e) {
+    // Fall back to raw XML via allorigins
+    const res = await fetchWithTimeout(fallback, 9000);
+    const text = await res.text();
+    return parseRawRss(text);
+  }
 }
 
 function stripHtml(html) {
@@ -210,13 +257,14 @@ let currentFilter = 'all';
 async function loadFeeds() {
   const statusEl = document.getElementById('feedStatus');
   const results = await Promise.allSettled(
-    FEEDS.map(f => fetch(proxyUrl(f.url)).then(r => r.json()).then(data => ({ feed: f, data })))
+    FEEDS.map(f => fetchFeed(f.url).then(data => ({ feed: f, data })))
   );
 
   let failures = 0;
+  const failedSources = [];
 
-  results.forEach(res => {
-    if (res.status === 'fulfilled' && res.value.data && res.value.data.items) {
+  results.forEach((res, idx) => {
+    if (res.status === 'fulfilled' && res.value.data && res.value.data.items && res.value.data.items.length) {
       const f = res.value.feed;
       const items = res.value.data.items.slice(0, 8).map(item => ({
         sourceId: f.id,
@@ -231,13 +279,14 @@ async function loadFeeds() {
       allItems = allItems.concat(items);
     } else {
       failures++;
+      failedSources.push(FEEDS[idx].name);
     }
   });
 
   allItems.sort((a, b) => new Date(b.date) - new Date(a.date));
 
   if (allItems.length === 0) {
-    statusEl.innerHTML = 'Could not load any feeds right now — the sources may be temporarily unreachable. Try refreshing in a moment.';
+    statusEl.innerHTML = 'Could not load any feeds right now — the sources may be temporarily unreachable, or this browser/network may be blocking the request. Try refreshing, or use the links below.';
     document.getElementById('feedEntries').innerHTML =
       '<div class="feed-empty">No items loaded. You can also subscribe directly via the feeds.opml file, or visit the sources individually:<br><br>' +
       FEEDS.map(f => `<a class="entry-link" href="${f.url}" target="_blank" rel="noopener">${f.name} →</a>`).join('&nbsp;&nbsp;&nbsp;') +
@@ -246,7 +295,7 @@ async function loadFeeds() {
   }
 
   statusEl.textContent = failures > 0
-    ? `Loaded ${allItems.length} items (${failures} source${failures > 1 ? 's' : ''} temporarily unavailable).`
+    ? `Loaded ${allItems.length} items. (${failedSources.join(', ')} temporarily unavailable.)`
     : `Showing ${allItems.length} most recent items across all sources.`;
 
   renderItems();
